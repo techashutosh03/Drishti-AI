@@ -3,6 +3,7 @@ import {
   AuditEvent,
   DashboardStats,
   AgentWorkflowStage,
+  AgentExecutionStatus,
   ImpactMetrics,
   Finding,
   EvidenceItem
@@ -133,11 +134,20 @@ export async function fetchApplications(): Promise<Application[]> {
     processedAt: item.processedAt,
     reviewedBy: item.reviewedBy,
     reviewerNotes: item.reviewNotes,
-    riskScore: item.riskScore ?? 0.0,
+    riskScore: typeof item.riskScore === "number" ? item.riskScore : undefined,
+    documentAuthenticityRisk: typeof item.documentAuthenticityRisk === "number" ? item.documentAuthenticityRisk : undefined,
+    applicationComplianceRisk: typeof item.applicationComplianceRisk === "number" ? item.applicationComplianceRisk : undefined,
+    authenticityAssessment: item.authenticityAssessment,
+    complianceAssessment: item.complianceAssessment,
+    authenticityExplanation: item.authenticityExplanation,
+    complianceExplanation: item.complianceExplanation,
     documents: item.documents || [],
     findings: (item.findings || []).map(normalizeFinding),
+    verificationResults: item.verificationResults || [],
     history: item.history || [],
-    agentExecutions: item.agentExecutions || []
+    agentExecutions: item.agentExecutions || [],
+    institutionId: item.institutionId,
+    submittedBy: item.submittedBy
   }));
 }
 
@@ -161,11 +171,20 @@ export async function fetchApplicationById(id: string): Promise<Application | nu
     processedAt: item.processedAt,
     reviewedBy: item.reviewedBy,
     reviewerNotes: item.reviewNotes,
-    riskScore: item.riskScore ?? 0.0,
+    riskScore: typeof item.riskScore === "number" ? item.riskScore : undefined,
+    documentAuthenticityRisk: typeof item.documentAuthenticityRisk === "number" ? item.documentAuthenticityRisk : undefined,
+    applicationComplianceRisk: typeof item.applicationComplianceRisk === "number" ? item.applicationComplianceRisk : undefined,
+    authenticityAssessment: item.authenticityAssessment,
+    complianceAssessment: item.complianceAssessment,
+    authenticityExplanation: item.authenticityExplanation,
+    complianceExplanation: item.complianceExplanation,
     documents: item.documents || [],
     findings: (item.findings || []).map(normalizeFinding),
+    verificationResults: item.verificationResults || [],
     history: item.history || [],
-    agentExecutions: item.agentExecutions || []
+    agentExecutions: item.agentExecutions || [],
+    institutionId: item.institutionId,
+    submittedBy: item.submittedBy
   };
 }
 
@@ -184,6 +203,7 @@ export async function submitApplication(data: {
       institutionName: data.institutionName,
       category: data.category,
       program: data.program || data.category,
+      approvalType: data.approvalType || "Extension of Approval (EOA)",
       academicYear: data.academicYear || "2026-27"
     })
   });
@@ -283,16 +303,79 @@ export async function fetchWorkflow(appId?: string): Promise<AgentWorkflowStage[
   const url = appId ? `${BASE_URL}/api/workflow/agents?appId=${appId}` : `${BASE_URL}/api/workflow/agents`;
   const res = await fetch(url, { headers: getAuthHeaders(), cache: "no-store" });
   const data = await handleResponse<any>(res);
+
+  const canonicalDescriptions: Record<string, string> = {
+    intake: "Category identification, document classification, statutory checklist selection",
+    document: "OCR, image preprocessing, structured statutory field extraction",
+    orchestrator: "Routing decision engine: dynamic conditional dispatch to Forensics and Verification",
+    forensics: "Level 1 ELA, pHash, metadata inspection & Level 2 semantic deduplication",
+    verification: "QR code decoding, digital signature validation, mock issuer registry check",
+    compliance: "Versioned regulatory rule evaluation against APH 2026-27 norms",
+  };
+
   if (data.executions && data.executions.length > 0) {
-    return data.executions;
+    return data.executions.map((exec: any, idx: number) => {
+      const agentName = exec.agentName || exec.name || "Agent";
+      let id = (exec.id || "").toLowerCase();
+      const lowerName = agentName.toLowerCase();
+      if (!id || id.startsWith("exec_")) {
+        if (lowerName.includes("intake")) id = "intake";
+        else if (lowerName.includes("document")) id = "document";
+        else if (lowerName.includes("orchestrator") || lowerName.includes("routing")) id = "orchestrator";
+        else if (lowerName.includes("forensic")) id = "forensics";
+        else if (lowerName.includes("verification")) id = "verification";
+        else if (lowerName.includes("compliance")) id = "compliance";
+        else id = `agent-${idx + 1}`;
+      }
+
+      let status = exec.status || "Completed";
+      const s = String(status).toUpperCase();
+      if (s === "COMPLETED") status = "Completed";
+      else if (s === "RUNNING") status = "Running";
+      else if (s === "FAILED") status = "Failed";
+      else if (s === "NEEDS_REVIEW" || s === "NEEDS REVIEW") status = "Needs Review";
+      else if (s === "SKIPPED") status = "Skipped";
+      else if (s === "NOT_STARTED" || s === "NOT STARTED") status = "Not Started";
+
+      const duration = exec.duration || (exec.durationMs !== undefined ? `${(exec.durationMs / 1000).toFixed(1)}s` : undefined) || "0.4s";
+
+      let description = exec.description || "";
+      if (!description && exec.details) {
+        if (exec.details.decisionRationale) {
+          description = exec.details.decisionRationale;
+        } else if (exec.details.category) {
+          description = `Category: ${exec.details.category} (${exec.details.approvalType || "EOA"})`;
+        } else if (exec.details.extractedCount !== undefined) {
+          description = `OCR text extraction and structured statutory field parsing (${exec.details.extractedCount} documents parsed)`;
+        } else if (exec.details.checksCount !== undefined) {
+          description = `QR code decoding, digital signature validation & issuer registry checks (${exec.details.checksCount} cryptographic checks completed)`;
+        } else if (exec.details.findingsCount !== undefined) {
+          description = `Versioned regulatory rule evaluation against APH 2026-27 norms (${exec.details.findingsCount} findings recorded)`;
+        }
+      }
+      if (!description) {
+        description = canonicalDescriptions[id] || `${agentName} execution`;
+      }
+
+      return {
+        id,
+        number: `0${idx + 1}`,
+        name: agentName,
+        status: status as AgentExecutionStatus,
+        description,
+        duration,
+        reason: exec.routingReason || exec.reason || undefined,
+        subModules: exec.subModules || []
+      };
+    });
   }
   if (data.agents && data.agents.length > 0) {
     return data.agents.map((ag: any, idx: number) => ({
       id: ag.id,
       number: `0${idx + 1}`,
       name: ag.name,
-      status: ag.status || (idx <= 2 ? "Completed" : idx === 3 ? "Running" : "Completed"),
-      description: ag.description,
+      status: ag.status || "Completed",
+      description: ag.description || canonicalDescriptions[ag.id] || "AI Agent Execution",
       duration: ag.duration || "0.4s",
       subModules: ag.subModules || []
     }));

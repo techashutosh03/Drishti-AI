@@ -1,14 +1,21 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import crypto from "crypto";
 import { db } from "../services/db.service";
-import { authenticateRequest, requireRole } from "../middleware/auth";
+import { authenticateRequest, requireRole, verifyToken } from "../middleware/auth";
 import { AuditService } from "../services/audit.service";
 import { QueueService } from "../services/queue.service";
 
 export async function applicationsRoutes(fastify: FastifyInstance) {
   // GET /api/applications - list all applications
   fastify.get("/api/applications", async (request: FastifyRequest, reply: FastifyReply) => {
-    const query = request.query as any;
+    const query = (request.query as any) || {};
+    const authHeader = request.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      const session = verifyToken(authHeader.substring(7));
+      if (session && session.role === "INSTITUTION") {
+        query.institutionId = session.institutionId || session.id;
+      }
+    }
     const apps = db.findApplications(query);
     return reply.send(apps);
   });
@@ -19,6 +26,19 @@ export async function applicationsRoutes(fastify: FastifyInstance) {
     const app = db.findApplicationById(id);
     if (!app) {
       return reply.status(404).send({ error: `Application not found: ${id}` });
+    }
+    const authHeader = request.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      const session = verifyToken(authHeader.substring(7));
+      if (session && session.role === "INSTITUTION") {
+        const belongsToUser =
+          app.institutionId === session.institutionId ||
+          app.institutionId === session.id ||
+          app.submittedBy === session.id;
+        if (!belongsToUser) {
+          return reply.status(403).send({ error: "Forbidden: You are not authorized to view this application." });
+        }
+      }
     }
     return reply.send(app);
   });
@@ -41,6 +61,7 @@ export async function applicationsRoutes(fastify: FastifyInstance) {
         institutionName: body.institutionName,
         category: body.category || "ENGINEERING_UNDERGRADUATE",
         program: body.program,
+        approvalType: body.approvalType || "Extension of Approval (EOA)",
         academicYear: body.academicYear || "2026-27",
         status: "Submitted",
         submittedAt: new Date().toISOString(),

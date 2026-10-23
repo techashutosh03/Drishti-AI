@@ -22,14 +22,19 @@ export default function AgentsPage() {
   const [stages, setStages] = useState<AgentWorkflowStage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string>("routing");
+  const [expandedId, setExpandedId] = useState<string>("orchestrator");
   const [activeTab, setActiveTab] = useState<"flow" | "list">("flow");
 
   const loadData = async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await fetchWorkflow();
+      let targetAppId: string | undefined = undefined;
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(window.location.search);
+        targetAppId = params.get("appId") || undefined;
+      }
+      const data = await fetchWorkflow(targetAppId);
       setStages(data);
     } catch (err: any) {
       setError(err?.message || "Unable to connect to the server. Please try again.");
@@ -49,78 +54,72 @@ export default function AgentsPage() {
     const getStage = (idMatch: string) =>
       stages.find(
         (s) =>
-          s.id.toLowerCase().includes(idMatch) ||
-          s.name.toLowerCase().includes(idMatch)
+          (s.id && s.id.toLowerCase().includes(idMatch)) ||
+          (s.name && s.name.toLowerCase().includes(idMatch))
       );
 
     const intakeStage = getStage("intake");
     const docStage = getStage("document");
-    const orchStage = getStage("routing") || getStage("orchestrator");
-    const complianceStage = getStage("compliance");
-
-    const forensicsSub =
-      orchStage?.subModules?.find((m) =>
-        m.name.toLowerCase().includes("forensic")
-      ) ||
+    const orchStage = getStage("orchestrator") || getStage("routing");
+    const forensicsStage =
       stages.find(
-        (s) =>
-          s.id === "forensics" ||
-          s.name.toLowerCase().includes("forensic")
+        (s) => s.id === "forensics" || s.name?.toLowerCase().includes("forensic")
+      ) ||
+      orchStage?.subModules?.find((m) =>
+        m.name?.toLowerCase().includes("forensic")
       );
-
-    const verificationSub =
+    const verificationStage =
+      stages.find(
+        (s) => s.id === "verification" || s.name?.toLowerCase().includes("verification")
+      ) ||
       orchStage?.subModules?.find(
         (m) =>
-          m.name.toLowerCase().includes("verification") ||
-          m.name.toLowerCase().includes("registry")
-      ) ||
-      stages.find(
-        (s) =>
-          s.id === "verification" ||
-          s.name.toLowerCase().includes("verification")
+          m.name?.toLowerCase().includes("verification") ||
+          m.name?.toLowerCase().includes("registry")
       );
+    const complianceStage = getStage("compliance");
 
     const list: AgentExecution[] = [];
 
     if (intakeStage) {
       list.push({
         id: "intake",
-        name: intakeStage.name,
+        name: intakeStage.name || "Intake Agent",
         status: intakeStage.status,
       });
     }
     if (docStage) {
       list.push({
         id: "document",
-        name: docStage.name,
+        name: docStage.name || "Document Agent",
         status: docStage.status,
       });
     }
     if (orchStage) {
       list.push({
         id: "orchestrator",
-        name: orchStage.name || "Orchestrator",
+        name: orchStage.name || "Orchestrator Agent",
         status: orchStage.status,
       });
     }
-    if (forensicsSub) {
+    if (forensicsStage) {
       list.push({
         id: "forensics",
-        name: "Forensics Agent",
-        status: forensicsSub.status,
+        name: forensicsStage.name || "Forensics Agent",
+        status: forensicsStage.status,
       });
     }
-    if (verificationSub) {
+    if (verificationStage) {
       list.push({
         id: "verification",
-        name: "Verification Agent",
-        status: verificationSub.status,
+        name: verificationStage.name || "Verification Agent",
+        status: verificationStage.status,
       });
     }
     if (complianceStage) {
       list.push({
         id: "compliance",
-        name: complianceStage.name,
+        name: complianceStage.name || "Compliance Agent",
         status: complianceStage.status,
       });
     }

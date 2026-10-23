@@ -110,7 +110,7 @@ export default function UploadPage() {
         console.warn("Processing job queueing notice:", queueErr);
       }
 
-      router.push("/applications");
+      router.push(`/applications/${app.id}`);
     } catch (err: any) {
       setError(err?.message || "Failed to submit application. Please try again.");
     } finally {

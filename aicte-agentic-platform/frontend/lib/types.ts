@@ -1,5 +1,6 @@
 export type ApplicationStatus =
   | "Submitted"
+  | "Queued"
   | "Processing"
   | "Needs Review"
   | "Cleared"
@@ -80,6 +81,7 @@ export interface Application {
   id: string;
   institutionName: string;
   category: "Engineering & Tech" | "Management" | "Pharmacy" | "Architecture";
+  program?: string;
   approvalType: string;
   academicYear: string;
   submissionDate: string;

@@ -368,6 +368,13 @@ export function RecentApplicationsTable({
                 </h3>
               </div>
               <div className="flex items-center gap-2">
+                <Link
+                  href={`/applications/${selectedApp.id}`}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 text-xs font-medium transition-colors"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  <span>Result Page</span>
+                </Link>
                 <button
                   type="button"
                   onClick={() => handleDownloadReport(selectedApp.id)}
@@ -427,7 +434,7 @@ export function RecentApplicationsTable({
                       </div>
                       <div className="mt-1 flex items-center gap-2">
                         <span className="font-mono text-base font-semibold text-white">
-                          {selectedApp.documentAuthenticityRisk !== undefined ? `${selectedApp.documentAuthenticityRisk}/100` : "0/100"}
+                          {selectedApp.documentAuthenticityRisk !== undefined ? `${selectedApp.documentAuthenticityRisk}/100` : "—"}
                         </span>
                         <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
                           selectedApp.authenticityAssessment === "HIGH_RISK"
@@ -452,7 +459,7 @@ export function RecentApplicationsTable({
                       </div>
                       <div className="mt-1 flex items-center gap-2">
                         <span className="font-mono text-base font-semibold text-white">
-                          {selectedApp.applicationComplianceRisk !== undefined ? `${selectedApp.applicationComplianceRisk}/100` : "0/100"}
+                          {selectedApp.applicationComplianceRisk !== undefined ? `${selectedApp.applicationComplianceRisk}/100` : "—"}
                         </span>
                         <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
                           (selectedApp.applicationComplianceRisk || 0) >= 40

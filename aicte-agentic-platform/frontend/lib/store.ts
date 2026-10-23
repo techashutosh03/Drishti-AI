@@ -6,6 +6,7 @@ import {
   AuditEvent,
   DashboardStats,
   AgentWorkflowStage,
+  AgentExecutionStatus,
 } from "./types";
 
 const DATA_DIR = path.resolve(process.cwd(), "../data");
@@ -343,48 +344,75 @@ export function getWorkflowStatus(): AgentWorkflowStage[] {
         reason: "Waiting for intake to complete.",
       },
       {
-        id: "routing",
+        id: "orchestrator",
         number: "03",
-        name: "Orchestrator",
+        name: "Orchestrator Agent",
         status: "Not Started",
-        description: "Evaluates document types and routes conditionally to Forensics or Verification.",
+        description: "Routing decision engine: dynamic conditional dispatch to Forensics and Verification.",
         reason: "Orchestrator idle.",
-        subModules: [
-          {
-            name: "Forensics Analysis",
-            engine: "OpenCV ELA + pHash",
-            status: "Not Started",
-            reason: "Waiting for document routing.",
-          },
-          {
-            name: "Registry Verification",
-            engine: "pyHanko + State API",
-            status: "Not Started",
-            reason: "Waiting for document routing.",
-          },
-        ],
+      },
+      {
+        id: "forensics",
+        number: "04",
+        name: "Forensics Agent",
+        status: "Not Started",
+        description: "Level 1 ELA, pHash, metadata inspection & Level 2 semantic deduplication.",
+        reason: "Waiting for orchestrator routing.",
+      },
+      {
+        id: "verification",
+        number: "05",
+        name: "Verification Agent",
+        status: "Not Started",
+        description: "QR code decoding, digital signature validation, mock issuer registry check.",
+        reason: "Waiting for orchestrator routing.",
       },
       {
         id: "compliance",
-        number: "04",
+        number: "06",
         name: "Compliance Agent",
         status: "Not Started",
         description: "Evaluates against AICTE APH 2026–27 norms.",
         reason: "Waiting for verified facts.",
-      },
-      {
-        id: "report",
-        number: "05",
-        name: "Report Agent",
-        status: "Not Started",
-        description: "Compiles decision dossier and risk score.",
-        reason: "Waiting for compliance evaluation.",
       },
     ];
   }
 
   // When applications exist:
   const latestApp = db.applications[0];
+  if (latestApp.agentExecutions && latestApp.agentExecutions.length > 0) {
+    return latestApp.agentExecutions.map((exec: any, idx: number) => {
+      const agentName = exec.agentName || exec.name || "Agent";
+      let id = (exec.id || "").toLowerCase();
+      const lowerName = agentName.toLowerCase();
+      if (!id || id.startsWith("exec_")) {
+        if (lowerName.includes("intake")) id = "intake";
+        else if (lowerName.includes("document")) id = "document";
+        else if (lowerName.includes("orchestrator") || lowerName.includes("routing")) id = "orchestrator";
+        else if (lowerName.includes("forensic")) id = "forensics";
+        else if (lowerName.includes("verification")) id = "verification";
+        else if (lowerName.includes("compliance")) id = "compliance";
+        else id = `agent-${idx + 1}`;
+      }
+
+      let status = exec.status || "Completed";
+      const s = String(status).toUpperCase();
+      if (s === "COMPLETED") status = "Completed";
+      else if (s === "RUNNING") status = "Running";
+      else if (s === "FAILED") status = "Failed";
+      else if (s === "NEEDS_REVIEW" || s === "NEEDS REVIEW") status = "Needs Review";
+
+      return {
+        id,
+        number: `0${idx + 1}`,
+        name: agentName,
+        status: status as AgentExecutionStatus,
+        description: exec.details?.decisionRationale || exec.description || `${agentName} execution`,
+        duration: exec.durationMs !== undefined ? `${(exec.durationMs / 1000).toFixed(1)}s` : "0.4s",
+      };
+    });
+  }
+
   return [
     {
       id: "intake",
@@ -393,14 +421,6 @@ export function getWorkflowStatus(): AgentWorkflowStage[] {
       status: "Completed",
       description: "Validated file integrity and generated SHA-256 provenance hashes.",
       duration: "0.4s",
-      subModules: [
-        {
-          name: "File Integrity & Checksum",
-          engine: "hashlib (SHA-256)",
-          status: "Completed",
-          findings: `Ingested ${latestApp.documents.length} document(s) for ${latestApp.id}.`,
-        },
-      ],
     },
     {
       id: "document",
@@ -411,42 +431,36 @@ export function getWorkflowStatus(): AgentWorkflowStage[] {
       reason: "Document extraction pipeline awaiting worker execution.",
     },
     {
-      id: "routing",
+      id: "orchestrator",
       number: "03",
-      name: "Orchestrator",
+      name: "Orchestrator Agent",
       status: "Not Started",
       description: "Conditional dynamic routing to Forensics and Verification.",
       reason: "Awaiting OCR structured output.",
-      subModules: [
-        {
-          name: "Forensics Analysis",
-          engine: "OpenCV ELA + pHash",
-          status: "Not Started",
-          reason: "Forensics branch not triggered yet.",
-        },
-        {
-          name: "Registry Verification",
-          engine: "pyHanko + State API",
-          status: "Not Started",
-          reason: "Verification branch not triggered yet.",
-        },
-      ],
+    },
+    {
+      id: "forensics",
+      number: "04",
+      name: "Forensics Agent",
+      status: "Not Started",
+      description: "Level 1 ELA, pHash, metadata inspection & Level 2 semantic deduplication.",
+      reason: "Forensics branch not triggered yet.",
+    },
+    {
+      id: "verification",
+      number: "05",
+      name: "Verification Agent",
+      status: "Not Started",
+      description: "QR code decoding, digital signature validation, mock issuer registry check.",
+      reason: "Verification branch not triggered yet.",
     },
     {
       id: "compliance",
-      number: "04",
+      number: "06",
       name: "Compliance Agent",
       status: "Not Started",
       description: "Evaluates against AICTE APH 2026–27 norms.",
       reason: "Awaiting validated facts.",
-    },
-    {
-      id: "report",
-      number: "05",
-      name: "Report Agent",
-      status: "Not Started",
-      description: "Compiles decision dossier and risk score.",
-      reason: "Awaiting upstream agent completion.",
     },
   ];
 }
